@@ -1,0 +1,6 @@
+id=disable_dt2w
+name=Disable Double Tap To Wake
+version=1.0
+versionCode=1
+author=TRA
+description=Forces /proc/tp_gesture to 0 so double tap to wake stays off (spes, LCT FTS touch driver)
