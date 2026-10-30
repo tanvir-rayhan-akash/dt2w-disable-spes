@@ -1,8 +1,8 @@
+[README.md](https://github.com/user-attachments/files/34171057/README.md)
 # Disable Double Tap To Wake — Redmi Note 11 (spes/spesn)
 
-A KernelSU / Magisk module that force-disables "Double Tap to Wake" on
-custom ROMs (e.g. Realme UI ports) where the ROM's own toggle does not
-actually turn it off.
+A fix for "Double Tap to Wake" on custom ROMs (e.g. Realme UI ports)
+where the ROM's own toggle does not actually turn it off.
 
 ## The problem
 
@@ -14,48 +14,86 @@ keeps its own gesture state in `/proc/tp_gesture`, which the ROM
 setting never touches — so double-tap-to-wake stays on even after you
 turn the setting off.
 
-## What this module does
+## The fix
 
-A background service script that:
-1. Waits for boot to complete.
-2. Writes `0` to `/proc/tp_gesture` to disable the gesture.
-3. Keeps checking every 3 seconds and re-forces it to `0`, in case the
-   ROM or app re-enables it on screen-off.
+A tiny background loop that writes `0` to `/proc/tp_gesture` on boot,
+and keeps re-forcing it every 3 seconds in case the ROM or an app
+re-enables it on screen-off.
 
 ## Device compatibility
 
 - Tested on: **Redmi Note 11 (spes / spesn)** running a Realme UI 7
   Android 16 kernel port (KernelSU Next).
 - Requires: a Focaltech FTS "LCT" touch driver exposing
-  `/proc/tp_gesture`. Other devices/kernels may use a different node
-  name — check with:
+  `/proc/tp_gesture`. Check first:
   ```
   adb shell su -c "cat /proc/tp_gesture"
   ```
-  If this file doesn't exist on your device, this module will do
-  nothing (harmlessly).
+  If this file doesn't exist on your device, neither install method
+  below will do anything (harmlessly).
 
-## Install
+## Install — Option A: no module, just a root script (recommended, no manager app needed)
 
-1. Root required (KernelSU / Magisk).
-2. Download the module zip from [Releases](../../releases).
-3. Flash it from your root manager app (Modules → Install).
-4. Reboot.
+This drops a single script into KernelSU/Magisk's `service.d` folder.
+It is **not** a flashable module and won't show up in your root
+manager's Modules list — it just runs on every boot as long as root
+is present.
 
-## Verify
+1. Connect your phone via `adb` (USB debugging on) and get a root
+   shell:
+   ```
+   adb shell
+   su
+   ```
+2. Inside the root shell, run:
+   ```
+   mkdir -p /data/adb/service.d
+   cat > /data/adb/service.d/disable_dt2w.sh << 'EOF'
+   #!/system/bin/sh
+   until [ "$(getprop sys.boot_completed)" = "1" ]; do
+       sleep 1
+   done
+   sleep 10
+   NODE=/proc/tp_gesture
+   [ -e "$NODE" ] || exit 0
+   while true; do
+       [ "$(cat $NODE 2>/dev/null | tr -d '[:space:]')" != "0" ] && echo 0 > $NODE
+       sleep 3
+   done &
+   EOF
+   chmod 755 /data/adb/service.d/disable_dt2w.sh
+   ```
+   (Or just push the [`disable_dt2w.sh`](disable_dt2w.sh) file from
+   this repo to `/data/adb/service.d/` and `chmod 755` it.)
+3. Reboot:
+   ```
+   reboot
+   ```
 
+### Verify
+
+Wait 20-30 seconds after boot, then:
 ```
 adb shell su -c "cat /proc/tp_gesture"
 ```
-Should read `0`. Double-tap on lock screen should no longer wake the
-display.
+Should read `0`.
 
-## Uninstall
+### Remove
 
-Remove the module from your root manager's Modules list, or manually:
 ```
-rm -rf /data/adb/modules/disable_dt2w
+adb shell su -c "rm /data/adb/service.d/disable_dt2w.sh"
 ```
+
+## Install — Option B: flashable module (via root manager app)
+
+If you'd rather manage this like any other module (enable/disable
+toggle in your manager app), use the flashable zip instead — see the
+[Releases](../../releases) page for `disable_dt2w_spes-v1.0.zip`.
+Flash it from KernelSU Next / Magisk Manager → Modules → Install, then
+reboot.
+
+Both options do exactly the same thing; pick whichever fits your
+workflow.
 
 ## Disclaimer
 
